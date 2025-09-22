@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smarties Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Smartie styles */
+        .smartie {
+            border-radius: 50%;
+            position: relative;
+            box-shadow:
+                inset 0 -4px 8px rgba(0, 0, 0, 0.2),
+                inset 0 4px 8px rgba(255, 255, 255, 0.3),
+                inset -2px -2px 5px rgba(0, 0, 0, 0.1),
+                inset 2px 2px 5px rgba(255, 255, 255, 0.2);
+        }
+
+        .smartie::before {
+            content: '';
+            position: absolute;
+            top: 10%;
+            left: 15%;
+            width: 40%;
+            height: 40%;
+            border-radius: 50%;
+            background: radial-gradient(
+                ellipse at center,
+                rgba(255, 255, 255, 0.9) 0%,
+                rgba(255, 255, 255, 0.4) 40%,
+                transparent 70%
+            );
+            filter: blur(1px);
+        }
+
+        .smartie-small {
+            width: 32px;
+            height: 32px;
+        }
+
+        .smartie-medium {
+            width: 48px;
+            height: 48px;
+        }
+
+        .smartie-large {
+            width: 80px;
+            height: 80px;
+        }
+
+        .smartie.red { background: radial-gradient(circle at 30% 30%, #FF6B6B 0%, #E63946 50%, #B91C1C 100%); }
+        .smartie.orange { background: radial-gradient(circle at 30% 30%, #FFB347 0%, #F4A261 50%, #DC7633 100%); }
+        .smartie.yellow { background: radial-gradient(circle at 30% 30%, #FFE66D 0%, #F1C40F 50%, #D68910 100%); }
+        .smartie.green { background: radial-gradient(circle at 30% 30%, #4ECDC4 0%, #2A9D8F 50%, #1E7F6F 100%); }
+        .smartie.blue { background: radial-gradient(circle at 30% 30%, #5DADE2 0%, #3498DB 50%, #2874A6 100%); }
+        .smartie.pink { background: radial-gradient(circle at 30% 30%, #FFB4E6 0%, #FF69B4 50%, #E91E63 100%); }
+        .smartie.purple { background: radial-gradient(circle at 30% 30%, #BB8FCE 0%, #9B59B6 50%, #7D3C98 100%); }
+        .smartie.brown { background: radial-gradient(circle at 30% 30%, #A1887F 0%, #795548 50%, #5D4037 100%); }
+
+        /* Chart container */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+
+        /* Transitions */
+        .fade-enter-active, .fade-leave-active {
+            transition: opacity 0.3s ease;
+        }
+        .fade-enter-from, .fade-leave-to {
+            opacity: 0;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="min-h-screen bg-gray-50">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-sm border-b sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16 items-center">
+                    <h1 class="text-xl font-bold text-gray-900">Smarties Tracker</h1>
+                    <div class="flex space-x-4">
+                        <button
+                            @click="currentView = 'entry'"
+                            :class="['px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                                         currentView === 'entry' ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100']"
+                        >
+                            New Entry
+                        </button>
+                        <button
+                            @click="currentView = 'history'"
+                            :class="['px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                                         currentView === 'history' ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100']"
+                        >
+                            History
+                        </button>
+                        <button
+                            @click="currentView = 'statistics'"
+                            :class="['px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                                         currentView === 'statistics' ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100']"
+                        >
+                            Statistics
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <transition name="fade" mode="out-in">
+                <!-- Entry View -->
+                <div v-if="currentView === 'entry'" key="entry">
+                    <div class="max-w-2xl mx-auto">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-6">Add New Smarties Box</h2>
+
+                        <form @submit.prevent="submitEntry" class="bg-white shadow rounded-lg p-6">
+                            <!-- Date and Contributor -->
+                            <div class="grid grid-cols-2 gap-4 mb-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                    <input
+                                        v-model="newEntry.date"
+                                        type="date"
+                                        :max="today"
+                                        required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    >
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+                                    <input
+                                        v-model="newEntry.contributor"
+                                        type="text"
+                                        required
+                                        placeholder="Enter your name"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    >
+                                </div>
+                            </div>
+
+                            <!-- Color Counters -->
+                            <div class="space-y-4 mb-6">
+                                <div v-for="color in colors" :key="color" class="flex items-center space-x-4">
+                                    <div :class="['smartie', color, 'smartie-medium']"></div>
+                                    <span class="w-20 font-medium capitalize">{{ color }}</span>
+                                    <div class="flex items-center space-x-2 flex-1">
+                                        <button
+                                            type="button"
+                                            @click="decrementColor(color)"
+                                            class="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl font-semibold"
+                                        >
+                                            -
+                                        </button>
+                                        <input
+                                            v-model.number="newEntry[color]"
+                                            type="number"
+                                            min="0"
+                                            max="50"
+                                            class="w-20 px-3 py-2 text-center border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                        <button
+                                            type="button"
+                                            @click="incrementColor(color)"
+                                            class="w-10 h-10 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-xl font-semibold"
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Total -->
+                            <div class="border-t pt-4 mb-6">
+                                <div class="flex justify-between items-center text-lg font-semibold">
+                                    <span>Total Smarties:</span>
+                                    <span class="text-2xl text-indigo-600">{{ entryTotal }}</span>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <button
+                                type="submit"
+                                :disabled="submitting"
+                                class="w-full bg-indigo-600 text-white py-3 rounded-md font-medium hover:bg-indigo-700 transition-colors disabled:bg-gray-400"
+                            >
+                                {{ submitting ? 'Saving...' : 'Save Entry' }}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- History View -->
+                <div v-else-if="currentView === 'history'" key="history">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Entry History</h2>
+
+                    <!-- Loading State -->
+                    <div v-if="loading" class="flex justify-center py-12">
+                        <div class="spinner"></div>
+                    </div>
+
+                    <!-- Entries Table -->
+                    <div v-else class="bg-white shadow rounded-lg overflow-hidden">
+                        <table class="min-w-full">
+                            <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contributor</th>
+                                <th v-for="color in colors" :key="color" class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <div :class="['smartie', color, 'smartie-small mx-auto']"></div>
+                                </th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                            <tr v-for="entry in entries" :key="entry.id">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">{{ formatDate(entry.date) }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">{{ entry.contributor }}</td>
+                                <td v-for="color in colors" :key="color" class="px-3 py-4 text-center text-sm">
+                                    {{ entry.colors[color] }}
+                                </td>
+                                <td class="px-6 py-4 text-center text-sm font-semibold">{{ entry.total }}</td>
+                                <td class="px-6 py-4 text-center text-sm">
+                                    <button
+                                        @click="deleteEntry(entry.id)"
+                                        class="text-red-600 hover:text-red-900"
+                                    >
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Empty State -->
+                        <div v-if="entries.length === 0" class="text-center py-12 text-gray-500">
+                            No entries yet. Add your first Smarties box!
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Statistics View -->
+                <div v-else-if="currentView === 'statistics'" key="statistics">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Statistics Overview</h2>
+
+                    <!-- Loading State -->
+                    <div v-if="loadingStats" class="flex justify-center py-12">
+                        <div class="spinner"></div>
+                    </div>
+
+                    <!-- Statistics Content -->
+                    <div v-else>
+                        <!-- Key Metrics -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                            <div class="bg-white rounded-lg shadow p-6">
+                                <h3 class="text-lg font-semibold text-gray-700">Total Boxes</h3>
+                                <p class="text-3xl font-bold text-indigo-600 mt-2">{{ statistics.overview?.total_boxes || 0 }}</p>
+                            </div>
+                            <div class="bg-white rounded-lg shadow p-6">
+                                <h3 class="text-lg font-semibold text-gray-700">Total Smarties</h3>
+                                <p class="text-3xl font-bold text-green-600 mt-2">{{ statistics.overview?.total_smarties || 0 }}</p>
+                            </div>
+                            <div class="bg-white rounded-lg shadow p-6">
+                                <h3 class="text-lg font-semibold text-gray-700">Avg per Box</h3>
+                                <p class="text-3xl font-bold text-purple-600 mt-2">{{ statistics.overview?.average_per_box || 0 }}</p>
+                            </div>
+                            <div class="bg-white rounded-lg shadow p-6">
+                                <h3 class="text-lg font-semibold text-gray-700">Most Common</h3>
+                                <div v-if="statistics.overview?.most_common_color" class="flex items-center mt-2">
+                                    <div :class="['smartie', statistics.overview.most_common_color.color, 'smartie-small mr-2']"></div>
+                                    <p class="text-2xl font-bold capitalize">{{ statistics.overview.most_common_color.color }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Charts -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                            <div class="bg-white rounded-lg shadow p-6">
+                                <h3 class="text-xl font-semibold text-gray-800 mb-4">Color Distribution</h3>
+                                <div class="chart-container">
+                                    <canvas ref="pieChart" id="pieChart"></canvas>
+                                </div>
+                                <!-- Debug info -->
+                                <div v-if="!pieChartInstance" class="text-sm text-gray-500 mt-2">
+                                    Chart not rendered yet...
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-lg shadow p-6">
+                                <h3 class="text-xl font-semibold text-gray-800 mb-4">Average per Color</h3>
+                                <div class="chart-container">
+                                    <canvas ref="barChart" id="barChart"></canvas>
+                                </div>
+                                <!-- Debug info -->
+                                <div v-if="!barChartInstance" class="text-sm text-gray-500 mt-2">
+                                    Chart not rendered yet...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Contributors -->
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h3 class="text-xl font-semibold text-gray-800 mb-4">Top Contributors</h3>
+                            <div class="space-y-3">
+                                <div v-for="contributor in contributors" :key="contributor.name" class="flex items-center justify-between">
+                                    <div class="flex items-center">
+                                        <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                                            <span class="text-indigo-600 font-semibold">{{ contributor.name.substring(0, 2).toUpperCase() }}</span>
+                                        </div>
+                                        <span class="ml-3 font-medium">{{ contributor.name }}</span>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="text-2xl font-bold text-gray-800">{{ contributor.boxes_counted }}</span>
+                                        <span class="text-sm text-gray-500 ml-1">boxes</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </transition>
+        </main>
+
+        <!-- Success Message -->
+        <transition name="fade">
+            <div v-if="showSuccess" class="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
+                {{ successMessage }}
+            </div>
+        </transition>
+
+        <!-- Error Message -->
+        <transition name="fade">
+            <div v-if="showError" class="fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg">
+                {{ errorMessage }}
+            </div>
+        </transition>
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+    createApp({
+        setup() {
+            // Configuration
+            const API_BASE = '/api/v1';
+            const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'pink', 'purple', 'brown'];
+
+            // State
+            const currentView = ref('entry');
+            const loading = ref(false);
+            const loadingStats = ref(false);
+            const submitting = ref(false);
+            const showSuccess = ref(false);
+            const showError = ref(false);
+            const successMessage = ref('');
+            const errorMessage = ref('');
+
+            const entries = ref([]);
+            const statistics = ref({});
+            const contributors = ref([]);
+
+            const newEntry = ref({
+                date: new Date().toISOString().split('T')[0],
+                contributor: '',
+                red: 0,
+                orange: 0,
+                yellow: 0,
+                green: 0,
+                blue: 0,
+                pink: 0,
+                purple: 0,
+                brown: 0
+            });
+
+            // Chart references
+            const pieChart = ref(null);
+            const barChart = ref(null);
+            let pieChartInstance = null;
+            let barChartInstance = null;
+
+            // Computed
+            const today = computed(() => new Date().toISOString().split('T')[0]);
+            const entryTotal = computed(() => {
+                return colors.reduce((sum, color) => sum + (newEntry.value[color] || 0), 0);
+            });
+
+            // Methods
+            const showNotification = (message, isError = false) => {
+                if (isError) {
+                    errorMessage.value = message;
+                    showError.value = true;
+                    setTimeout(() => showError.value = false, 3000);
+                } else {
+                    successMessage.value = message;
+                    showSuccess.value = true;
+                    setTimeout(() => showSuccess.value = false, 3000);
+                }
+            };
+
+            const incrementColor = (color) => {
+                if (newEntry.value[color] < 50) {
+                    newEntry.value[color]++;
+                }
+            };
+
+            const decrementColor = (color) => {
+                if (newEntry.value[color] > 0) {
+                    newEntry.value[color]--;
+                }
+            };
+
+            const formatDate = (dateString) => {
+                const date = new Date(dateString);
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+            };
+
+            const submitEntry = async () => {
+                if (!newEntry.value.contributor.trim()) {
+                    showNotification('Please enter your name', true);
+                    return;
+                }
+
+                submitting.value = true;
+                try {
+                    await axios.post(`${API_BASE}/entries`, newEntry.value);
+                    showNotification('Entry saved successfully!');
+
+                    // Reset form
+                    newEntry.value = {
+                        date: new Date().toISOString().split('T')[0],
+                        contributor: newEntry.value.contributor,
+                        red: 0, orange: 0, yellow: 0, green: 0,
+                        blue: 0, pink: 0, purple: 0, brown: 0
+                    };
+
+                    // Refresh data if on history view
+                    if (currentView.value === 'history') {
+                        fetchEntries();
+                    }
+                } catch (error) {
+                    showNotification('Failed to save entry', true);
+                    console.error(error);
+                } finally {
+                    submitting.value = false;
+                }
+            };
+
+            const fetchEntries = async () => {
+                loading.value = true;
+                try {
+                    const response = await axios.get(`${API_BASE}/entries?per_page=50`);
+                    entries.value = response.data.data;
+                } catch (error) {
+                    showNotification('Failed to load entries', true);
+                    console.error(error);
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const deleteEntry = async (id) => {
+                if (!confirm('Are you sure you want to delete this entry?')) return;
+
+                try {
+                    await axios.delete(`${API_BASE}/entries/${id}`);
+                    showNotification('Entry deleted successfully');
+                    fetchEntries();
+                } catch (error) {
+                    showNotification('Failed to delete entry', true);
+                    console.error(error);
+                }
+            };
+
+            const fetchStatistics = async () => {
+                loadingStats.value = true;
+                try {
+                    const [overviewRes, distributionRes, contributorsRes] = await Promise.all([
+                        axios.get(`${API_BASE}/statistics/overview`),
+                        axios.get(`${API_BASE}/statistics/color-distribution`),
+                        axios.get(`${API_BASE}/contributors`)
+                    ]);
+
+                    statistics.value = {
+                        overview: overviewRes.data.data,
+                        distribution: distributionRes.data.data
+                    };
+                    contributors.value = contributorsRes.data.data;
+
+                    // Wait for Vue to render the DOM with the new data
+                    await nextTick();
+
+                    // Update charts after a delay to ensure refs are available
+                    setTimeout(() => {
+                        updateCharts();
+                    }, 300);
+                } catch (error) {
+                    showNotification('Failed to load statistics', true);
+                    console.error(error);
+                } finally {
+                    loadingStats.value = false;
+                }
+            };
+
+            const updateCharts = () => {
+                console.log('updateCharts called');
+
+                if (!statistics.value.distribution || !statistics.value.distribution.distribution) {
+                    console.log('No distribution data available');
+                    return;
+                }
+
+                const distribution = statistics.value.distribution.distribution;
+                console.log('Distribution data:', distribution);
+
+                // Check if we have any data
+                if (Object.keys(distribution).length === 0) {
+                    console.log('Distribution data is empty');
+                    return;
+                }
+
+                const chartColors = {
+                    red: '#E63946',
+                    orange: '#F4A261',
+                    yellow: '#F1C40F',
+                    green: '#2A9D8F',
+                    blue: '#3498DB',
+                    pink: '#FF69B4',
+                    purple: '#9B59B6',
+                    brown: '#795548'
+                };
+
+                // Prepare data
+                const labels = colors.filter(c => distribution[c]).map(c => c.charAt(0).toUpperCase() + c.slice(1));
+                const counts = colors.filter(c => distribution[c]).map(c => distribution[c].count);
+                const averages = colors.filter(c => distribution[c]).map(c => distribution[c].average);
+                const backgroundColors = colors.filter(c => distribution[c]).map(c => chartColors[c]);
+
+                console.log('Chart data prepared:', { labels, counts, averages });
+
+                // Destroy existing charts
+                if (pieChartInstance) {
+                    console.log('Destroying existing pie chart');
+                    pieChartInstance.destroy();
+                    pieChartInstance = null;
+                }
+                if (barChartInstance) {
+                    console.log('Destroying existing bar chart');
+                    barChartInstance.destroy();
+                    barChartInstance = null;
+                }
+
+                // Get canvas elements by ID as fallback
+                const pieCanvas = pieChart.value || document.getElementById('pieChart');
+                const barCanvas = barChart.value || document.getElementById('barChart');
+
+                console.log('Canvas elements:', { pieCanvas, barCanvas });
+
+                // Pie Chart
+                if (pieCanvas && currentView.value === 'statistics') {
+                    try {
+                        const pieCtx = pieCanvas.getContext('2d');
+                        console.log('Creating pie chart...');
+                        pieChartInstance = new Chart(pieCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    data: counts,
+                                    backgroundColor: backgroundColors,
+                                    borderWidth: 2,
+                                    borderColor: '#fff'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom',
+                                        labels: {
+                                            padding: 15,
+                                            font: { size: 12 }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                        console.log('Pie chart created successfully');
+                    } catch (error) {
+                        console.error('Error creating pie chart:', error);
+                    }
+                }
+
+                // Bar Chart
+                if (barCanvas && currentView.value === 'statistics') {
+                    try {
+                        const barCtx = barCanvas.getContext('2d');
+                        console.log('Creating bar chart...');
+                        barChartInstance = new Chart(barCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    label: 'Average per Box',
+                                    data: averages,
+                                    backgroundColor: backgroundColors,
+                                    borderWidth: 0
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        max: Math.max(...averages) + 2
+                                    }
+                                },
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    }
+                                }
+                            }
+                        });
+                        console.log('Bar chart created successfully');
+                    } catch (error) {
+                        console.error('Error creating bar chart:', error);
+                    }
+                }
+            };
+
+            // Watch for view changes
+            watch(currentView, async (newView, oldView) => {
+                // Clean up charts when leaving statistics view
+                if (oldView === 'statistics' && pieChartInstance) {
+                    pieChartInstance.destroy();
+                    pieChartInstance = null;
+                }
+                if (oldView === 'statistics' && barChartInstance) {
+                    barChartInstance.destroy();
+                    barChartInstance = null;
+                }
+
+                // Load data for the new view
+                if (newView === 'history') {
+                    await fetchEntries();
+                } else if (newView === 'statistics') {
+                    await fetchStatistics();
+                }
+            });
+
+            // Lifecycle
+            onMounted(() => {
+                // Don't auto-load data on mount, let the watch handle it
+                console.log('App mounted, current view:', currentView.value);
+
+                // Check if Chart.js is loaded
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js is not loaded!');
+                    showNotification('Chart library failed to load', true);
+                } else {
+                    console.log('Chart.js version:', Chart.version);
+                }
+            });
+
+            return {
+                // State
+                currentView,
+                loading,
+                loadingStats,
+                submitting,
+                showSuccess,
+                showError,
+                successMessage,
+                errorMessage,
+                entries,
+                statistics,
+                contributors,
+                newEntry,
+                colors,
+                today,
+                entryTotal,
+
+                // Chart instances (expose for template)
+                pieChartInstance,
+                barChartInstance,
+
+                // Methods
+                incrementColor,
+                decrementColor,
+                formatDate,
+                submitEntry,
+                deleteEntry,
+
+                // Refs
+                pieChart,
+                barChart
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
